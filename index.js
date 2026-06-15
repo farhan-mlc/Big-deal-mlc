@@ -1,8 +1,30 @@
-require("http").createServer((req, res) => res.end("Bot online!")).listen(process.env.PORT || 3000);
+const http = require("http");
 
-const { Client, GatewayIntentBits, Partials, PermissionsBitField, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, SlashCommandBuilder, REST, Routes, AuditLogEvent } = require("discord.js");
-const ms = require("ms");
-const fs = require("fs");
+// Render needs server on 0.0.0.0
+const server = http.createServer((req, res) => {
+  res.writeHead(200);
+  res.end("Bot is running!");
+});
+server.listen(process.env.PORT || 3000, "0.0.0.0", () => {
+  console.log("HTTP server listening on port " + (process.env.PORT || 3000));
+});
+
+// Check TOKEN before anything
+if (!process.env.TOKEN) {
+  console.error("FATAL ERROR: TOKEN environment variable is not set!");
+  console.error("Go to Render Dashboard -> Your Service -> Environment -> Add TOKEN variable");
+  process.exit(1);
+}
+
+console.log("TOKEN found, starting bot...");
+
+const {
+  Client, GatewayIntentBits, Partials, PermissionsBitField,
+  EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
+  SlashCommandBuilder, REST, Routes, AuditLogEvent
+} = require("discord.js");
+const ms   = require("ms");
+const fs   = require("fs");
 const path = require("path");
 
 const DATA_FILE = path.join(__dirname, "data.json");
@@ -16,7 +38,11 @@ function loadData() {
 
 function saveData() {
   try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify({ banWords: [...runtimeBanWords], censorWords: [...runtimeCensorWords], unverifiedRoleId }, null, 2));
+    fs.writeFileSync(DATA_FILE, JSON.stringify({
+      banWords: [...runtimeBanWords],
+      censorWords: [...runtimeCensorWords],
+      unverifiedRoleId
+    }, null, 2));
   } catch (e) { console.error("[DATA] save error:", e.message); }
 }
 
@@ -40,8 +66,8 @@ const config = {
   },
 };
 
-const _saved = loadData();
-let unverifiedRoleId = _saved.unverifiedRoleId || null;
+const _saved          = loadData();
+let unverifiedRoleId  = _saved.unverifiedRoleId || null;
 const runtimeBanWords    = new Set([...config.banWords,    ...(_saved.banWords    || [])]);
 const runtimeCensorWords = new Set([...config.censorWords, ...(_saved.censorWords || [])]);
 const whitelistedUsers   = new Set([config.ownerId, config.secondOwnerId]);
@@ -95,15 +121,10 @@ async function punishNuker(guild, executorId, reason) {
     }
     await guild.members.ban(executorId, { reason: "[ANTI-NUKE] " + reason }).catch(() => {});
     const logs = getLogsChannel(guild);
-    if (logs) {
-      logs.send({
-        content: "<@" + config.ownerId + ">",
-        embeds: [new EmbedBuilder().setTitle("ANTI-NUKE TRIGGERED").setDescription("Action: " + reason + "\nUser: <@" + executorId + ">\nResponse: Roles stripped, Timed out, Banned").setColor("DarkRed").setTimestamp()],
-      });
-    }
+    if (logs) logs.send({ content: "<@" + config.ownerId + ">", embeds: [new EmbedBuilder().setTitle("ANTI-NUKE TRIGGERED").setDescription("Action: " + reason + "\nUser: <@" + executorId + ">\nRoles stripped, Timed out, Banned").setColor("DarkRed").setTimestamp()] });
     for (const oid of [config.ownerId, config.secondOwnerId]) {
       const owner = await client.users.fetch(oid).catch(() => null);
-      if (owner) owner.send("ANTI-NUKE in " + guild.name + " - " + reason + " by <@" + executorId + "> - banned.").catch(() => {});
+      if (owner) owner.send("ANTI-NUKE in " + guild.name + " - " + reason + " by <@" + executorId + "> banned.").catch(() => {});
     }
   } catch (err) { console.error("[ANTI-NUKE]", err.message); }
 }
@@ -124,8 +145,8 @@ const commands = [
   new SlashCommandBuilder().setName("userinfo").setDescription("User info").addUserOption(o => o.setName("user").setDescription("User").setRequired(false)),
   new SlashCommandBuilder().setName("serverinfo").setDescription("Server info"),
   new SlashCommandBuilder().setName("filter").setDescription("Manage word filters").setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
-    .addSubcommand(s => s.setName("add").setDescription("Add word").addStringOption(o => o.setName("type").setDescription("List type").setRequired(true).addChoices({ name: "ban", value: "ban" }, { name: "censor", value: "censor" })).addStringOption(o => o.setName("word").setDescription("Word").setRequired(true)))
-    .addSubcommand(s => s.setName("remove").setDescription("Remove word").addStringOption(o => o.setName("type").setDescription("List type").setRequired(true).addChoices({ name: "ban", value: "ban" }, { name: "censor", value: "censor" })).addStringOption(o => o.setName("word").setDescription("Word").setRequired(true)))
+    .addSubcommand(s => s.setName("add").setDescription("Add word").addStringOption(o => o.setName("type").setDescription("List").setRequired(true).addChoices({ name: "ban", value: "ban" }, { name: "censor", value: "censor" })).addStringOption(o => o.setName("word").setDescription("Word").setRequired(true)))
+    .addSubcommand(s => s.setName("remove").setDescription("Remove word").addStringOption(o => o.setName("type").setDescription("List").setRequired(true).addChoices({ name: "ban", value: "ban" }, { name: "censor", value: "censor" })).addStringOption(o => o.setName("word").setDescription("Word").setRequired(true)))
     .addSubcommand(s => s.setName("list").setDescription("Show all words")),
   new SlashCommandBuilder().setName("userwhitelist").setDescription("Whitelist users").setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
     .addSubcommand(s => s.setName("add").setDescription("Add user").addUserOption(o => o.setName("user").setDescription("User").setRequired(true)))
@@ -144,11 +165,11 @@ const commands = [
 ].map(c => c.toJSON());
 
 client.once("ready", async () => {
-  console.log("Logged in as " + client.user.tag);
+  console.log("SUCCESS: Logged in as " + client.user.tag);
   try {
     const rest = new REST({ version: "10" }).setToken(config.token);
     await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-    console.log("Registered " + commands.length + " slash commands");
+    console.log("SUCCESS: Registered " + commands.length + " slash commands");
   } catch (err) { console.error("Command register failed:", err.message); }
 });
 
@@ -177,29 +198,18 @@ client.on("guildMemberAdd", async (member) => {
   if (member.user.bot) {
     if (!whitelistedBots.has(member.user.id)) {
       await member.kick("Unauthorized bot").catch(() => {});
-      if (logs) logs.send({ embeds: [new EmbedBuilder().setTitle("Unauthorized Bot Kicked").setDescription(member.user.tag + " not whitelisted. Use /botwhitelist add.").setColor("Red").setTimestamp()] });
+      if (logs) logs.send({ embeds: [new EmbedBuilder().setTitle("Unauthorized Bot Kicked").setDescription(member.user.tag + " not whitelisted.").setColor("Red").setTimestamp()] });
     } else {
       if (logs) logs.send({ embeds: [new EmbedBuilder().setTitle("Whitelisted Bot Joined").setDescription(member.user.tag).setColor("Green").setTimestamp()] });
     }
     return;
   }
   const ageDays = Math.floor((Date.now() - member.user.createdTimestamp) / 86400000);
-  if (ageDays < 7 && logs) {
-    logs.send({ embeds: [new EmbedBuilder().setTitle("Possible Alt Account").setDescription(member.toString() + " joined. Account age: " + ageDays + " days").setColor("Orange").setTimestamp()] });
-  }
-  if (unverifiedRoleId) {
-    const r = member.guild.roles.cache.get(unverifiedRoleId);
-    if (r) await member.roles.add(r).catch(() => {});
-  }
+  if (ageDays < 7 && logs) logs.send({ embeds: [new EmbedBuilder().setTitle("Possible Alt Account").setDescription(member.toString() + " - Account age: " + ageDays + " days").setColor("Orange").setTimestamp()] });
+  if (unverifiedRoleId) { const r = member.guild.roles.cache.get(unverifiedRoleId); if (r) await member.roles.add(r).catch(() => {}); }
   if (config.verifyChannel) {
     const vc = member.guild.channels.cache.get(config.verifyChannel);
-    if (vc) {
-      vc.send({
-        content: member.toString(),
-        embeds: [new EmbedBuilder().setTitle("Verification Required").setDescription("Welcome to " + member.guild.name + "!\nClick the button below to verify.").setColor("Green").setTimestamp()],
-        components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("verify").setLabel("Verify Me").setStyle(ButtonStyle.Success))],
-      });
-    }
+    if (vc) vc.send({ content: member.toString(), embeds: [new EmbedBuilder().setTitle("Verification Required").setDescription("Welcome to " + member.guild.name + "!\nClick below to verify.").setColor("Green").setTimestamp()], components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("verify").setLabel("Verify Me").setStyle(ButtonStyle.Success))] });
   }
 });
 
@@ -207,41 +217,28 @@ client.on("messageCreate", async (message) => {
   if (message.author.bot || !message.guild) return;
   const userId = message.author.id;
   const content = message.content.toLowerCase();
-
   for (const [id, user] of message.mentions.users) {
-    if (afkUsers.has(id)) {
-      const data = afkUsers.get(id);
-      await message.reply({ content: user.username + " is AFK: " + data.reason, allowedMentions: { repliedUser: false } }).catch(() => {});
-    }
+    if (afkUsers.has(id)) await message.reply({ content: user.username + " is AFK: " + afkUsers.get(id).reason, allowedMentions: { repliedUser: false } }).catch(() => {});
   }
-
-  if (afkUsers.has(userId)) {
-    afkUsers.delete(userId);
-    await message.reply({ content: "Welcome back! AFK removed.", allowedMentions: { repliedUser: false } }).catch(() => {});
-  }
-
+  if (afkUsers.has(userId)) { afkUsers.delete(userId); await message.reply({ content: "Welcome back! AFK removed.", allowedMentions: { repliedUser: false } }).catch(() => {}); }
   if (isWhitelisted(userId)) return;
-
   const hasBanWord    = [...runtimeBanWords].some(w => content.includes(w));
   const hasCensorWord = !hasBanWord && [...runtimeCensorWords].some(w => content.includes(w));
-
   if (hasBanWord) {
     await message.delete().catch(() => {});
     try { await message.member.timeout(5 * 60 * 1000, "Banned word"); } catch (_) {}
     const w = await message.channel.send({ embeds: [new EmbedBuilder().setDescription(message.author.toString() + " banned word used. Timed out 5 min.").setColor("Red")] });
     setTimeout(() => w.delete().catch(() => {}), 5000);
     const logs = getLogsChannel(message.guild);
-    if (logs) logs.send({ embeds: [new EmbedBuilder().setTitle("Banned Word Detected").addFields({ name: "User", value: message.author.tag, inline: true }, { name: "Channel", value: "<#" + message.channel.id + ">", inline: true }).setColor("DarkRed").setTimestamp()] });
+    if (logs) logs.send({ embeds: [new EmbedBuilder().setTitle("Banned Word").addFields({ name: "User", value: message.author.tag, inline: true }, { name: "Channel", value: "<#" + message.channel.id + ">", inline: true }).setColor("DarkRed").setTimestamp()] });
     return;
   }
-
   if (hasCensorWord) {
     await message.delete().catch(() => {});
     const w = await message.channel.send({ embeds: [new EmbedBuilder().setDescription(message.author.toString() + " message removed (filtered word).").setColor("Orange")] });
     setTimeout(() => w.delete().catch(() => {}), 5000);
     return;
   }
-
   const now = Date.now();
   if (!spamMap.has(userId)) spamMap.set(userId, []);
   const ts = spamMap.get(userId).filter(t => now - t < 5000);
@@ -259,68 +256,30 @@ client.on("messageCreate", async (message) => {
 });
 
 client.on("interactionCreate", async (interaction) => {
-
   if (interaction.isButton() && interaction.customId === "verify") {
     const role = interaction.guild.roles.cache.get(config.verifiedRole);
     if (!role) return interaction.reply({ content: "Verified role not found.", ephemeral: true });
     if (interaction.member.roles.cache.has(role.id)) return interaction.reply({ content: "Already verified!", ephemeral: true });
     try {
       await interaction.member.roles.add(role);
-      if (unverifiedRoleId) {
-        const ur = interaction.guild.roles.cache.get(unverifiedRoleId);
-        if (ur) await interaction.member.roles.remove(ur).catch(() => {});
-      }
-      await interaction.reply({ embeds: [new EmbedBuilder().setTitle("Verified!").setDescription("Welcome to " + interaction.guild.name + "! You now have full access.").setColor("Green").setTimestamp()], ephemeral: true });
+      if (unverifiedRoleId) { const ur = interaction.guild.roles.cache.get(unverifiedRoleId); if (ur) await interaction.member.roles.remove(ur).catch(() => {}); }
+      await interaction.reply({ embeds: [new EmbedBuilder().setTitle("Verified!").setDescription("Welcome to " + interaction.guild.name + "!").setColor("Green").setTimestamp()], ephemeral: true });
       const user = interaction.user;
       const member = interaction.member;
       const accAge = Math.floor((Date.now() - user.createdTimestamp) / 86400000);
-      const embed = new EmbedBuilder().setTitle("New Member Verified")
-        .setThumbnail(user.displayAvatarURL({ dynamic: true }))
-        .addFields(
-          { name: "Username", value: user.tag, inline: true },
-          { name: "User ID", value: user.id, inline: true },
-          { name: "Account Created", value: "<t:" + Math.floor(user.createdTimestamp / 1000) + ":F>" },
-          { name: "Joined Server", value: member.joinedAt ? "<t:" + Math.floor(member.joinedAt.getTime() / 1000) + ":F>" : "Unknown" },
-          { name: "Account Age", value: accAge + " days", inline: true }
-        ).setColor("Green").setTimestamp();
-      for (const oid of [config.ownerId, config.secondOwnerId]) {
-        const o = await client.users.fetch(oid).catch(() => null);
-        if (o) o.send({ embeds: [embed] }).catch(() => {});
-      }
+      const embed = new EmbedBuilder().setTitle("New Member Verified").setThumbnail(user.displayAvatarURL({ dynamic: true })).addFields({ name: "Username", value: user.tag, inline: true }, { name: "User ID", value: user.id, inline: true }, { name: "Account Created", value: "<t:" + Math.floor(user.createdTimestamp / 1000) + ":F>" }, { name: "Joined Server", value: member.joinedAt ? "<t:" + Math.floor(member.joinedAt.getTime() / 1000) + ":F>" : "Unknown" }, { name: "Account Age", value: accAge + " days", inline: true }).setColor("Green").setTimestamp();
+      for (const oid of [config.ownerId, config.secondOwnerId]) { const o = await client.users.fetch(oid).catch(() => null); if (o) o.send({ embeds: [embed] }).catch(() => {}); }
       const logs = getLogsChannel(interaction.guild);
       if (logs) logs.send({ embeds: [embed] });
-    } catch (_) {
-      interaction.reply({ content: "Failed to verify. Check bot permissions.", ephemeral: true }).catch(() => {});
-    }
+    } catch (_) { interaction.reply({ content: "Failed to verify. Check bot permissions.", ephemeral: true }).catch(() => {}); }
     return;
   }
-
   if (!interaction.isChatInputCommand()) return;
   try { await interaction.deferReply({ ephemeral: true }); } catch (_) { return; }
   const cmd = interaction.commandName;
-
   try {
-
-    if (cmd === "afk") {
-      afkUsers.set(interaction.user.id, { reason: interaction.options.getString("reason") || "AFK" });
-      return interaction.editReply({ content: "AFK set." });
-    }
-    if (cmd === "removeafk") {
-      if (!afkUsers.has(interaction.user.id)) return interaction.editReply({ content: "You are not AFK." });
-      afkUsers.delete(interaction.user.id);
-      return interaction.editReply({ content: "AFK removed." });
-    }
-    if (cmd === "say") {
-      await interaction.channel.send(interaction.options.getString("message"));
-      return interaction.editReply({ content: "Sent." });
-    }
-    if (cmd === "announcement") {
-      await interaction.channel.send({ embeds: [new EmbedBuilder().setTitle("Announcement").setDescription(interaction.options.getString("message")).setColor("Blue").setFooter({ text: "By " + interaction.user.tag }).setTimestamp()] });
-      return interaction.editReply({ content: "Announcement posted." });
-    }
-    if (cmd === "dm") {
-      const target = interaction.options.getUser("user");
-      await target.send(interaction.options.getString("message"));
-      return interaction.editReply({ content: "DM sent to " + target.tag });
-    }
-    if (cmd 
+    if (cmd === "afk") { afkUsers.set(interaction.user.id, { reason: interaction.options.getString("reason") || "AFK" }); return interaction.editReply({ content: "AFK set." }); }
+    if (cmd === "removeafk") { if (!afkUsers.has(interaction.user.id)) return interaction.editReply({ content: "You are not AFK." }); afkUsers.delete(interaction.user.id); return interaction.editReply({ content: "AFK removed." }); }
+    if (cmd === "say") { await interaction.channel.send(interaction.options.getString("message")); return interaction.editReply({ content: "Sent." }); }
+    if (cmd === "announcement") { await interaction.channel.send({ embeds: [new EmbedBuilder().setTitle("Announcement").setDescription(interaction.options.getString("message")).setColor("Blue").setFooter({ text: "By " + interaction.user.tag }).setTimestamp()] }); return interaction.editReply({ content: "Posted." }); }
+    if (cmd === "dm") { await interaction.options.getUser("user").send(interaction.options.getString("message")); return interaction.editReply({ content: "
