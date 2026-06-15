@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: advanced-security-bot
+    env: node
+    buildCommand: npm install
+    startCommand: node index.js
+    envVars:
+      - key: TOKEN
+        sync: false
